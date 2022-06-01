@@ -72,6 +72,17 @@ namespace Microsoft.MIDebugEngine.Natvis
         }
     }
 
+    internal class VariableChildrenWrapper : SimpleWrapper
+    {
+        public uint SkipToChildIndex;
+
+        public VariableChildrenWrapper(string name, AD7Engine engine, IVariableInformation underlyingVariable, uint skipToChildIndex = 0)
+           : base(name, engine, underlyingVariable)
+        {
+            SkipToChildIndex = skipToChildIndex;
+        }
+    }
+
     internal class VisualizerWrapper : SimpleWrapper
     {
         public readonly Natvis.VisualizerInfo Visualizer;
@@ -679,6 +690,8 @@ namespace Microsoft.MIDebugEngine.Natvis
                     }
                     var sizes = item.Size;
                     uint size = 0;
+                    bool hasMore = false;
+                    VariableChildrenWrapper childWrapper = variable as VariableChildrenWrapper;
                     if (sizes == null)
                     {
                         continue;
@@ -691,7 +704,17 @@ namespace Microsoft.MIDebugEngine.Natvis
                         {
                             string val = GetExpressionValue(s.Value, variable, visualizer.ScopedNames);
                             size = MICore.Debugger.ParseUint(val);
-                            size = size > MAX_EXPAND ? MAX_EXPAND : size;   // limit expansion
+
+                            if (childWrapper != null)
+                            {
+                                hasMore = (size - childWrapper.SkipToChildIndex) > MAX_EXPAND;
+                                size = hasMore ? MAX_EXPAND : (size - childWrapper.SkipToChildIndex); // limit expansion
+                            }
+                            else
+                            {
+                                hasMore = size > MAX_EXPAND;
+                                size = hasMore ? MAX_EXPAND : size; // limit expansion
+                            }
                             break;
                         }
                     }
@@ -708,13 +731,32 @@ namespace Microsoft.MIDebugEngine.Natvis
                         {
                             string processedExpr = ReplaceNamesInExpression(v.Value, variable, visualizer.ScopedNames);
                             Dictionary<string, string> indexDic = new Dictionary<string, string>();
-                            for (uint index = 0; index < size; ++index)
+                            uint startIndex = 0;
+                            if (childWrapper != null)
+                            {
+                                startIndex = childWrapper.SkipToChildIndex;
+                            }
+                            for (uint index = startIndex; index < (startIndex + size); ++index)
                             {
                                 indexDic["$i"] = index.ToString(CultureInfo.InvariantCulture);
                                 string finalExpr = ReplaceNamesInExpression(processedExpr, null, indexDic);
                                 IVariableInformation expressionVariable = new VariableInformation(finalExpr, variable, _process.Engine, "[" + indexDic["$i"] + "]");
                                 expressionVariable.SyncEval();
                                 children.Add(expressionVariable);
+                            }
+                            // add the [More...] field
+                            if (hasMore)
+                            {
+                                IVariableInformation rawView;
+                                if (childWrapper != null)
+                                {
+                                    rawView = new VariableChildrenWrapper("[More...]", _process.Engine, variable, childWrapper.SkipToChildIndex + size);
+                                }
+                                else
+                                {
+                                    rawView = new VariableChildrenWrapper("[More...]", _process.Engine, variable, size);
+                                }
+                                children.Add(rawView);
                             }
                             break;
                         }
@@ -749,7 +791,7 @@ namespace Microsoft.MIDebugEngine.Natvis
                     }
                 }
             }
-            if (!(variable is VisualizerWrapper)) // don't stack wrappers
+            if (!(variable is VisualizerWrapper) && !(variable is VariableChildrenWrapper)) // don't stack wrappers
             {
                 // add the [Raw View] field
                 IVariableInformation rawView = new VisualizerWrapper(ResourceStrings.RawView, _process.Engine, variable, visualizer, isVisualizerView: false);
