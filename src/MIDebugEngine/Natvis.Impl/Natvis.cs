@@ -271,7 +271,7 @@ namespace Microsoft.MIDebugEngine.Natvis
                 XmlSerializer serializer = new XmlSerializer(typeof(AutoVisualizer));
                 if (!File.Exists(path))
                 {
-                    _process.WriteOutput(String.Format(CultureInfo.CurrentCulture, ResourceStrings.FileNotFound, path));
+                    _process.Logger.GetNatvisChannelLog()?.WriteLine(LogLevel.Error, ResourceStrings.FileNotFound, path);
                     return false;
                 }
                 XmlReaderSettings settings = new XmlReaderSettings();
@@ -352,7 +352,7 @@ namespace Microsoft.MIDebugEngine.Natvis
             catch (Exception exception)
             {
                 // don't allow natvis failures to stop debugging
-                _process.WriteOutput(String.Format(CultureInfo.CurrentCulture, ResourceStrings.ErrorReadingFile, exception.Message, path));
+                _process.Logger.GetNatvisChannelLog()?.WriteLine(LogLevel.Error, ResourceStrings.ErrorReadingFile, exception.Message, path);
                 return false;
             }
         }
@@ -397,7 +397,7 @@ namespace Microsoft.MIDebugEngine.Natvis
             {
                 // don't allow natvis to mess up debugging
                 // eat any exceptions and return the variable's value
-                _process.Logger.WriteLine("natvis FormatDisplayString: " + e.Message);
+                _process.Logger.GetNatvisChannelLog()?.WriteLine(LogLevel.Trace, "FormatDisplayString: " + e.Message);
             }
             finally
             {
